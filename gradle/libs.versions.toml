@@ -18,6 +18,7 @@ readability4j = "1.0.8"
 pdfboxAndroid = "2.0.27.0"
 documentfile = "1.0.1"
 junit = "4.13.2"
+commonsCompress = "1.27.1"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -51,6 +52,8 @@ media3-session = { module = "androidx.media3:media3-session", version.ref = "med
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 readability4j = { module = "net.dankito.readability4j:readability4j", version.ref = "readability4j" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
