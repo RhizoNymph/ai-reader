@@ -170,9 +170,40 @@ class DefaultTextPipelineTest {
         )
         assertEquals(2, result.sentences.size)
         assertTrue(result.sentences.all { it.text.length <= 281 })
-        assertTrue(result.sentences.all { it.text.endsWith(".") })
+        // Mid-sentence cut: the first piece must NOT end with a period (that
+        // makes the voice do a sentence-final fall mid-sentence); it ends with
+        // continuation punctuation, and only the final piece is terminal.
+        assertTrue(result.sentences.first().text.endsWith(","))
+        assertTrue(result.sentences.last().text.endsWith("."))
         assertEquals(listOf(0, 600), result.sentences.map { it.pauseAfterMs })
-        assertTrue(result.sentences[0].displayText != result.sentences[1].displayText)
+        // Both pieces highlight the same (whole) display sentence in the UI.
+        assertEquals(result.sentences[0].displayText, result.sentences[1].displayText)
+    }
+
+    @Test
+    fun ellipsesNeverReachTheTtsText() {
+        val result = pipeline.process(
+            ExtractedDocument(
+                null,
+                listOf(ContentBlock.Paragraph("He waited… nothing happened. Then silence...")),
+            ),
+        )
+        assertEquals(
+            listOf("He waited, nothing happened.", "Then silence."),
+            result.sentences.map { it.text },
+        )
+        assertTrue(result.sentences.none { "..." in it.text })
+    }
+
+    @Test
+    fun numberedHeadingStaysOneChunk() {
+        val result = pipeline.process(
+            ExtractedDocument(
+                null,
+                listOf(ContentBlock.Heading("3. Methods", level = 2)),
+            ),
+        )
+        assertEquals(listOf("3. Methods."), result.sentences.map { it.text })
     }
 
     @Test

@@ -153,14 +153,14 @@ class SentenceSegmenterTest {
         val input = "$a, $b, $c." // 300 chars, commas at 100 and 202
         assertEquals(
             listOf("$a, $b,", "$c."),
-            SentenceSegmenter.segment(input),
+            SentenceSegmenter.safetySplit(input),
         )
     }
 
     @Test
     fun longSentenceWithoutClausesSplitsAtWordBoundary() {
         val input = "word ".repeat(70).trim() // 349 chars, no clause punctuation
-        val pieces = SentenceSegmenter.segment(input)
+        val pieces = SentenceSegmenter.safetySplit(input)
         assertEquals(2, pieces.size)
         assertTrue(pieces.all { it.length <= SentenceSegmenter.MAX_SENTENCE_CHARS })
         assertEquals(input, pieces.joinToString(" "))
@@ -169,7 +169,7 @@ class SentenceSegmenterTest {
     @Test
     fun pathologicalSingleTokenHardSplits() {
         val input = "a".repeat(600)
-        val pieces = SentenceSegmenter.segment(input)
+        val pieces = SentenceSegmenter.safetySplit(input)
         assertTrue(pieces.all { it.length <= SentenceSegmenter.MAX_SENTENCE_CHARS })
         assertEquals(input, pieces.joinToString(""))
         assertEquals(3, pieces.size)
@@ -179,10 +179,18 @@ class SentenceSegmenterTest {
     fun safetySplitRecursesUntilAllPiecesFit() {
         val clause = "x".repeat(90)
         val input = (1..5).joinToString(", ") { clause } + "." // ~460 chars
-        val pieces = SentenceSegmenter.segment(input)
+        val pieces = SentenceSegmenter.safetySplit(input)
         assertTrue(pieces.size >= 2)
         assertTrue(pieces.all { it.length <= SentenceSegmenter.MAX_SENTENCE_CHARS })
         assertTrue(pieces.all { it.isNotBlank() })
+    }
+
+    @Test
+    fun segmentLeavesOverlongSentencesIntactForTheDisplaySide() {
+        // Length capping happens on the TTS text in the pipeline; the display
+        // sentence stays whole so the UI never shows a chopped sentence.
+        val input = "alpha beta ".repeat(30).trim()
+        assertEquals(listOf(input), SentenceSegmenter.segment(input))
     }
 
     @Test
@@ -191,6 +199,53 @@ class SentenceSegmenterTest {
             listOf("A normal sentence, with a comma."),
             SentenceSegmenter.segment("A normal sentence, with a comma."),
         )
+    }
+
+    // --- enumeration markers ---
+
+    @Test
+    fun enumerationMarkerAtStartDoesNotSplit() {
+        assertEquals(
+            listOf("1. Introduction"),
+            SentenceSegmenter.segment("1. Introduction"),
+        )
+        assertEquals(
+            listOf("12. The Council of Elrond"),
+            SentenceSegmenter.segment("12. The Council of Elrond"),
+        )
+    }
+
+    @Test
+    fun midTextDigitBeforePeriodStillSplits() {
+        assertEquals(
+            listOf("He was born in 1990.", "25 years later he left."),
+            SentenceSegmenter.segment("He was born in 1990. 25 years later he left."),
+        )
+    }
+
+    // --- ensureContinuationPunctuation ---
+
+    @Test
+    fun continuationKeepsExistingClausePunctuation() {
+        assertEquals("first clause,", SentenceSegmenter.ensureContinuationPunctuation("first clause,"))
+        assertEquals("first clause;", SentenceSegmenter.ensureContinuationPunctuation("first clause;"))
+        assertEquals("first clause:", SentenceSegmenter.ensureContinuationPunctuation("first clause:"))
+    }
+
+    @Test
+    fun continuationAppendsCommaToBareWordCut() {
+        assertEquals("cut at a word,", SentenceSegmenter.ensureContinuationPunctuation("cut at a word"))
+    }
+
+    @Test
+    fun continuationLeavesTerminalPunctuationAlone() {
+        assertEquals("Done.", SentenceSegmenter.ensureContinuationPunctuation("Done."))
+        assertEquals("Done!", SentenceSegmenter.ensureContinuationPunctuation("Done!"))
+    }
+
+    @Test
+    fun continuationStripsTrailingHyphenBeforeComma() {
+        assertEquals("ended with,", SentenceSegmenter.ensureContinuationPunctuation("ended with- "))
     }
 
     // --- ensureTerminalPunctuation ---

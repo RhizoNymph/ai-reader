@@ -50,10 +50,10 @@ Per `ContentBlock`, in order:
    - Protected (no split): decimals (never candidates — no whitespace after the dot),
      single-uppercase-letter initials and dotted acronyms (`J. R. R.`, `U.S.`), known
      abbreviations (`Dr.`, `etc.`, `e.g.`, `i.e.`, ... — the protect list is a superset
-     of the expansion list), ellipses unless followed by a capital letter.
-   - Safety split: pieces > 280 chars split at the last `; : , — –` before the limit,
-     recursively; clause-free text splits at the last word boundary; a single giant
-     token is hard-cut at 280.
+     of the expansion list), ellipses unless followed by a capital letter, and
+     digit-only enumeration markers opening the text (`1. Introduction`).
+   - `segment` splits at real boundaries only; length capping happens later on the
+     normalized TTS text (display sentences may exceed 280 chars — UI-only).
 
 3. **Per display sentence**, the TTS text is produced by:
    - **SpeakableExpander.expand**: URLs → registrable host with dots kept
@@ -64,7 +64,9 @@ Per `ContentBlock`, in order:
      Eq./eq.→Equation, No.+digit→Number, Dr./Mr./Mrs./Ms./Prof./Jr./Sr.→spoken titles,
      St.+Capitalized→Saint). Expansion runs *before* SymbolNormalizer so URL slashes
      and email `@` are rewritten, not mangled.
-   - **SymbolNormalizer.normalize**: curly quotes → straight; `…`/4+ dots → `...`;
+   - **SymbolNormalizer.normalize**: curly quotes → straight; ellipses (`…`, 3+ dots,
+     spaced `. . .`) → `", "` — espeak-ng narrates `...` as "dot dot dot", so they must
+     never reach the engine; stray `..` typos collapse to `.`;
      em dash and `--` runs → `", "` (adjacent commas deduped); en dash between digits →
      `" to "`, otherwise `", "`; bullets, daggers, and ``* _ ` # ~ ^ | < >`` dropped;
      numeric/`[citation needed]` bracket citations dropped; `% & § ° = +`(digit/space
@@ -75,11 +77,14 @@ Per `ContentBlock`, in order:
      Final cleanup collapses spaces, dedupes commas, fixes space-before-punctuation,
      and strips leading orphan punctuation.
    - Sentences whose normalized form has no letter or digit are dropped.
-   - If expansion pushed the normalized text past 280 chars, it is safety-split again
-     (those pieces share the same `displayText`).
-   - **SentenceSegmenter.ensureTerminalPunctuation**: appends `.` if the sentence does
-     not end with `.!?` (closing quote/paren allowed after it); trailing clause
-     punctuation is replaced (`clause,` → `clause.`), never stacked.
+   - Normalized text past 280 chars is safety-split: last `; : , — –` before the
+     limit, recursively; clause-free text splits at the last word boundary; a single
+     giant token is hard-cut. All pieces share the same `displayText`.
+   - **Piece punctuation**: only the FINAL piece of a split sentence gets
+     `ensureTerminalPunctuation` (appends `.` when not ending `.!?`; trailing clause
+     punctuation replaced, never stacked). Non-final pieces get
+     `ensureContinuationPunctuation` (keep `,;:`, else append `,`) so a mid-sentence
+     cut keeps mid-sentence prosody instead of a sentence-final fall.
 
 4. **Assembly** (`DefaultTextPipeline`): `SpeakableSentence(index, text, displayText,
    blockIndex, pauseAfterMs)`. `displayText` is the post-unwrap, pre-normalization
@@ -106,9 +111,12 @@ Per `ContentBlock`, in order:
 - `SpeakableSentence.text` contains only whitelist characters: letters, digits,
   `.,!?;:'"()-`, and single spaces. No newlines, tabs, symbols, or emoji — ever.
 - Every `text` ends with `.`, `!`, or `?` (optionally followed by a closing
-  quote/paren).
+  quote/paren) — EXCEPT non-final pieces of a safety-split sentence, which end with
+  `,`, `;`, or `:` to keep mid-sentence prosody across the cut.
+- `text` never contains `...` (espeak-ng would say "dot dot dot") and never has two
+  adjacent periods.
 - `text` is never empty and always contains at least one letter or digit.
-- `text.length <= 281` (280 from the safety split, +1 for an appended period).
+- `text.length <= 281` (280 from the safety split, +1 for appended punctuation).
 - Re-running stages 2–3 (`SymbolNormalizer.normalize(SpeakableExpander.expand(text))`)
   on any output `text` is a no-op (idempotence).
 - Sentence indices are contiguous from 0; `blockIndex` is monotonically non-decreasing

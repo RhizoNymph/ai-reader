@@ -19,11 +19,16 @@ object SentenceSegmenter {
 
     const val MAX_SENTENCE_CHARS = 280
 
-    /** Splits [text] into trimmed sentence pieces, each at most [MAX_SENTENCE_CHARS]. */
+    /**
+     * Splits [text] into trimmed sentences at real sentence boundaries only.
+     * Length capping is deliberately NOT applied here: it belongs on the
+     * normalized TTS text (see [safetySplit]), where non-final pieces get
+     * continuation punctuation instead of a false sentence-final period.
+     */
     fun segment(text: String): List<String> {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return emptyList()
-        return splitAtBoundaries(trimmed).flatMap(::safetySplit)
+        return splitAtBoundaries(trimmed)
     }
 
     /**
@@ -43,9 +48,25 @@ object SentenceSegmenter {
         return stripped + "." + closers
     }
 
+    /**
+     * For non-final pieces of a safety-split sentence: keeps mid-sentence prosody by
+     * ending the piece with continuation punctuation (`, ; :`) instead of a terminal
+     * mark — a period here makes the voice do a sentence-final fall mid-sentence.
+     * A piece cut at a bare word boundary gets a comma appended.
+     */
+    fun ensureContinuationPunctuation(piece: String): String {
+        val s = piece.trim()
+        if (s.isEmpty()) return s
+        if (s.last() in TERMINAL_PUNCTUATION || s.last() in CONTINUATION_PUNCTUATION) return s
+        val stripped = s.trimEnd { it == '-' || it == ' ' }
+        if (stripped.isEmpty()) return s
+        return "$stripped,"
+    }
+
     // --- boundary detection ---
 
     private const val TERMINAL_PUNCTUATION = ".!?"
+    private const val CONTINUATION_PUNCTUATION = ",;:"
     private const val CLOSING_MARKS = "\"')"
     private const val TRAILING_CLAUSE_PUNCTUATION = ",;:- "
 
@@ -96,6 +117,11 @@ object SentenceSegmenter {
         // Single capital letters: initials ("J. R. R.") and acronym tails ("U.S.").
         if (word.length == 1 && word[0].isUpperCase()) return true
         if (word in plainAbbreviations) return true
+
+        // "1. Introduction" — an enumeration marker opening the paragraph is a
+        // label, not a sentence end; splitting it makes a lone "1." chunk with
+        // an unnatural pause. Mid-text digits ("in 1990. 25 years…") still split.
+        if (word.isNotEmpty() && wordStart == 0 && word.all(Char::isDigit)) return true
 
         for (abbreviation in dottedAbbreviations) {
             val from = punctIndex + 1 - abbreviation.length

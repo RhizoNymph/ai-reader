@@ -47,10 +47,17 @@ class DefaultTextPipeline : TextPipeline {
                 SymbolNormalizer.normalize(SpeakableExpander.expand(displaySentence))
             if (normalized.none(Char::isLetterOrDigit)) continue
             // Expansions can outgrow the display-side split; re-split the TTS text.
-            for (piece in SentenceSegmenter.safetySplit(normalized)) {
-                val ttsText = SentenceSegmenter.ensureTerminalPunctuation(piece)
-                if (ttsText.isEmpty()) continue
-                produced += ttsText to displaySentence
+            // Only the FINAL piece of a split sentence ends with terminal
+            // punctuation — earlier pieces keep continuation punctuation so the
+            // voice doesn't do a sentence-final fall mid-sentence at each cut.
+            val pieces = SentenceSegmenter.safetySplit(normalized)
+            pieces.forEachIndexed { pieceIndex, piece ->
+                val ttsText = if (pieceIndex == pieces.lastIndex) {
+                    SentenceSegmenter.ensureTerminalPunctuation(piece)
+                } else {
+                    SentenceSegmenter.ensureContinuationPunctuation(piece)
+                }
+                if (ttsText.isNotEmpty()) produced += ttsText to displaySentence
             }
         }
         produced.forEachIndexed { i, (ttsText, displayText) ->

@@ -26,20 +26,44 @@ class SymbolNormalizerTest {
 
     // --- ellipses ---
 
+    // espeak-ng reads "..." literally as "dot dot dot", so ellipses must never
+    // reach the engine: they become a comma pause instead.
+
     @Test
-    fun ellipsisCharBecomesThreeDots() {
-        assertEquals("wait... ok", n("wait… ok"))
+    fun ellipsisCharBecomesCommaPause() {
+        assertEquals("wait, ok", n("wait… ok"))
     }
 
     @Test
-    fun threeDotsStayThreeDots() {
-        assertEquals("wait... ok", n("wait... ok"))
+    fun threeDotsBecomeCommaPause() {
+        assertEquals("wait, ok", n("wait... ok"))
     }
 
     @Test
-    fun dotRunsCollapseToThreeDots() {
-        assertEquals("wait... ok", n("wait..... ok"))
-        assertEquals("wait... ok", n("wait.... ok"))
+    fun dotRunsBecomeCommaPause() {
+        assertEquals("wait, ok", n("wait..... ok"))
+        assertEquals("wait, ok", n("wait.... ok"))
+    }
+
+    @Test
+    fun spacedEllipsisBecomesCommaPause() {
+        assertEquals("wait, ok", n("wait . . . ok"))
+    }
+
+    @Test
+    fun trailingEllipsisBecomesTrailingComma() {
+        assertEquals("wait,", n("wait..."))
+    }
+
+    @Test
+    fun doubledDotTypoCollapsesToOnePeriod() {
+        assertEquals("done. Next", n("done.. Next"))
+    }
+
+    @Test
+    fun initialsAndDecimalsAreNotEllipses() {
+        assertEquals("J. R. R. Tolkien", n("J. R. R. Tolkien"))
+        assertEquals("about 3.14 then", n("about 3.14 then"))
     }
 
     // --- dashes ---

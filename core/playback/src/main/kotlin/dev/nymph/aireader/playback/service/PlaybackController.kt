@@ -213,13 +213,23 @@ class PlaybackController(
 
     private fun appendNewlyCached(s: Session, st: SynthState) {
         if (session !== s) return
+        var firstAppendedWindow = -1
         while (s.appendedThrough < st.cachedThrough && s.appendedThrough + 1 < s.sentences.size) {
             val next = s.appendedThrough + 1
             // cachedThrough is contiguous from the scheduler's playhead; guard
             // anyway so a stale state update can never enqueue a missing file.
-            if (next < s.firstIndexInPlaylist || !s.store.has(next)) return
+            if (next < s.firstIndexInPlaylist || !s.store.has(next)) break
+            if (firstAppendedWindow < 0) firstAppendedWindow = next - s.firstIndexInPlaylist
             player.addMediaItem(mediaItemFor(s, next))
             s.appendedThrough = next
+        }
+        // ENDED means the player drained the playlist before synthesis caught up
+        // (or a seek landed in a still-uncached region and the rebuild was empty).
+        // Appending items never leaves ENDED on its own — kick the player onto
+        // the first new chunk. playWhenReady is untouched, so this resumes
+        // audibly only if the user was listening when the playlist ran dry.
+        if (firstAppendedWindow >= 0 && player.playbackState == Player.STATE_ENDED) {
+            player.seekTo(firstAppendedWindow, 0L)
         }
     }
 

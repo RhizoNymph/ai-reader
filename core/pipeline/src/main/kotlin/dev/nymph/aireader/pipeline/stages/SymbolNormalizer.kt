@@ -40,10 +40,15 @@ object SymbolNormalizer {
 
     // --- ellipses ---
 
-    private val dotRun = Regex("""\.{4,}""")
+    // espeak-ng narrates "..." literally as "dot dot dot". An ellipsis becomes a
+    // comma pause instead (a sentence-trailing comma is later promoted to "." by
+    // ensureTerminalPunctuation); stray ".." typos collapse to a single period.
+    // Dots separated by anything but whitespace ("J. R. R.", "3.14") never match.
+    private val ellipsisLike = Regex("""(?:\.\s*){2,}\.|…""")
+    private val doubledDot = Regex("""\.\.""")
 
     private fun normalizeEllipses(s: String): String =
-        s.replace("…", "...").replace(dotRun, "...")
+        s.replace(ellipsisLike, ", ").replace(doubledDot, ".")
 
     // --- citations ---
 
