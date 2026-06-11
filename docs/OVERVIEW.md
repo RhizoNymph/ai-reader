@@ -52,6 +52,11 @@ Features Index:
     entry_points: [core/data]
     depends_on: []
     doc: docs/features/library.md
+  app-ui:
+    description: Compose UI (library/player/models/settings), manual DI container, import flow, share-intent intake, playback session binding.
+    entry_points: [app AiReaderApp, app MainActivity]
+    depends_on: [extraction, text-pipeline, tts-engine, playback, library]
+    doc: docs/features/app-ui.md
 ```
 
 ## Build

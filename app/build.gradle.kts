@@ -62,6 +62,16 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
 
+    // The app constructs the DataStore / Room database / OkHttp client / media3
+    // player surface that the core modules expose in their public APIs.
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.room.runtime)
+    implementation(libs.okhttp)
+    implementation(libs.pdfbox.android)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.session)
+    implementation(libs.media3.common)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
 }
