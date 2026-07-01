@@ -57,6 +57,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET status = :status, errorMessage = :errorMessage WHERE id = :docId")
     suspend fun updateStatus(docId: Long, status: String, errorMessage: String?)
 
+    @Query("UPDATE documents SET title = :title WHERE id = :docId")
+    suspend fun updateTitle(docId: Long, title: String)
+
     @Insert
     suspend fun insertSentences(sentences: List<SentenceEntity>)
 

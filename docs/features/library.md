@@ -60,11 +60,11 @@ All under `core/data/src/main/kotlin/dev/nymph/aireader/data/`:
 | --- | --- |
 | `db/DocumentEntity.kt` | `DocumentEntity` Room entity (`documents`). |
 | `db/SentenceEntity.kt` | `SentenceEntity` Room entity (`sentences`), composite PK + cascade FK. |
-| `db/DocumentDao.kt` | `DocumentDao`: `observeAll`, `observeById`, `getById`, `insert`, `update`, `deleteById`, `updatePosition`, `updateVoice`, `updateStatus`, `@Transaction insertDocumentWithSentences(document, sentencesFor)`. |
+| `db/DocumentDao.kt` | `DocumentDao`: `observeAll`, `observeById`, `getById`, `insert`, `update`, `deleteById`, `updatePosition`, `updateVoice`, `updateStatus`, `updateTitle`, `@Transaction insertDocumentWithSentences(document, sentencesFor)`. |
 | `db/SentenceDao.kt` | `SentenceDao`: `insertAll`, `getForDocument`, `getRange(docId, fromIdx, count)`, `deleteForDocument`. |
 | `db/AiReaderDatabase.kt` | `AiReaderDatabase` (version 1) + `build(context)` factory. |
 | `db/Mappers.kt` | Pure, JVM-tested mapping: `sourceTypeOf`/`sourceRefOf`/`documentSourceFromColumns`, `VoiceColumns`/`voiceColumnsOf`/`voiceSpecFromColumns`, `documentEntityFor`, `sentenceEntitiesFor`, `speakableDocumentFrom`, `progressFraction`, `libraryItemFrom`, `DocumentStatus` enum, `SOURCE_TYPE_PDF`/`SOURCE_TYPE_WEB`/`UNTITLED_TITLE`. |
-| `db/LibraryRepository.kt` | `LibraryItem` summary type; `LibraryRepository(documentDao, sentenceDao, clock)`: `observeLibrary`, `importDocument`, `getSpeakable`, `updatePosition`, `updateVoice`, `updateStatus`, `delete`. |
+| `db/LibraryRepository.kt` | `LibraryItem` summary type; `LibraryRepository(documentDao, sentenceDao, clock)`: `observeLibrary`, `importDocument`, `getSpeakable`, `updatePosition`, `updateVoice`, `updateStatus`, `rename`, `delete`. |
 | `settings/AppSettings.kt` | `AppSettings`, `SettingsDefaults`, pure parsers `engineIdFromStored`, `voiceIdFromStored`, `speedFromStored`, `lookaheadFromStored`, `appSettingsFromStored`. |
 | `settings/SettingsRepository.kt` | `SettingsRepository(dataStore)`: `settings: Flow<AppSettings>` + suspend setters; private preference keys. |
 

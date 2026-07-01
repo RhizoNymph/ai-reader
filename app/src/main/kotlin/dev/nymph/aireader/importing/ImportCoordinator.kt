@@ -58,10 +58,19 @@ class ImportCoordinator(
     /** User-facing message for each FAILED row created by this process. */
     val failureMessages: StateFlow<Map<Long, String>> = _failureMessages.asStateFlow()
 
-    suspend fun import(source: DocumentSource): ImportResult {
+    /**
+     * [customTitle], when non-blank, overrides the extraction-derived title for
+     * the imported document (and the in-progress placeholder). Blank/null falls
+     * back to the source-derived placeholder and then the extracted title.
+     */
+    suspend fun import(source: DocumentSource, customTitle: String? = null): ImportResult {
+        val chosenTitle = customTitle?.trim()?.takeIf { it.isNotEmpty() }
         val placeholderId = library.importDocument(
             source,
-            SpeakableDocument(title = placeholderTitleFor(source), sentences = emptyList()),
+            SpeakableDocument(
+                title = chosenTitle ?: placeholderTitleFor(source),
+                sentences = emptyList(),
+            ),
         )
         library.updateStatus(placeholderId, DocumentStatus.IMPORTING)
 
@@ -84,8 +93,10 @@ class ImportCoordinator(
         }
 
         // Insert the real row first, then drop the placeholder, so the library
-        // never flashes empty between the two writes.
-        val docId = library.importDocument(source, speakable)
+        // never flashes empty between the two writes. A user-supplied title wins
+        // over whatever extraction found.
+        val titled = if (chosenTitle != null) speakable.copy(title = chosenTitle) else speakable
+        val docId = library.importDocument(source, titled)
         library.delete(placeholderId)
         clearFailure(placeholderId)
         return ImportResult.Success(docId)

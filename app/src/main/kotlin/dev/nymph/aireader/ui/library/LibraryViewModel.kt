@@ -42,15 +42,24 @@ class LibraryViewModel(
             VoiceModelCatalog.all.any { modelRepository.observe(it.engineId).value is ModelState.Installed },
         )
 
-    /** [uriString] must be a SAF content URI with a persisted read permission. */
-    fun importPdf(uriString: String) {
+    /**
+     * [uriString] must be a SAF content URI with a persisted read permission.
+     * [customTitle] (optional) overrides the PDF's own title in the library.
+     */
+    fun importPdf(uriString: String, customTitle: String? = null) {
         // App scope: imports keep running if the user navigates away.
-        appScope.launch { importCoordinator.import(DocumentSource.Pdf(uriString)) }
+        appScope.launch { importCoordinator.import(DocumentSource.Pdf(uriString), customTitle) }
     }
 
-    fun importWebPage(rawUrl: String) {
+    /** [customTitle] (optional) overrides the page's own title in the library. */
+    fun importWebPage(rawUrl: String, customTitle: String? = null) {
         val url = normalizeWebUrl(rawUrl) ?: return
-        appScope.launch { importCoordinator.import(DocumentSource.WebPage(url)) }
+        appScope.launch { importCoordinator.import(DocumentSource.WebPage(url), customTitle) }
+    }
+
+    /** Renames a library document; blank titles are ignored by the repository. */
+    fun rename(item: LibraryItem, newTitle: String) {
+        appScope.launch { library.rename(item.id, newTitle) }
     }
 
     /** Failed import: drop the failed row and run the import again from its source. */

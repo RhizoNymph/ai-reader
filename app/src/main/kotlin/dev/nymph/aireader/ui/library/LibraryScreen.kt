@@ -19,7 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
@@ -68,6 +71,8 @@ fun LibraryScreen(
 
     var showUrlDialog by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<LibraryItem?>(null) }
+    var renameCandidate by remember { mutableStateOf<LibraryItem?>(null) }
+    var pendingPdfUri by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -77,7 +82,8 @@ fun LibraryScreen(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
-            viewModel.importPdf(uri.toString())
+            // Ask for a name before importing; the picked URI waits here.
+            pendingPdfUri = uri.toString()
         }
     }
 
@@ -123,7 +129,7 @@ fun LibraryScreen(
                                     onOpenDocument(item.id)
                                 }
                             },
-                            onLongClick = { deleteCandidate = item },
+                            onRename = { renameCandidate = item },
                             onRetry = { viewModel.retry(item) },
                             onDelete = { deleteCandidate = item },
                         )
@@ -135,11 +141,38 @@ fun LibraryScreen(
 
     if (showUrlDialog) {
         AddWebPageDialog(
-            onConfirm = { url ->
-                viewModel.importWebPage(url)
+            onConfirm = { url, name ->
+                viewModel.importWebPage(url, name)
                 showUrlDialog = false
             },
             onDismiss = { showUrlDialog = false },
+        )
+    }
+
+    pendingPdfUri?.let { uri ->
+        NameBookDialog(
+            title = "Name this book",
+            initialName = "",
+            confirmLabel = "Add",
+            onConfirm = { name ->
+                viewModel.importPdf(uri, name.ifBlank { null })
+                pendingPdfUri = null
+            },
+            onDismiss = { pendingPdfUri = null },
+        )
+    }
+
+    renameCandidate?.let { candidate ->
+        NameBookDialog(
+            title = "Rename book",
+            initialName = candidate.title,
+            confirmLabel = "Rename",
+            requireName = true,
+            onConfirm = { name ->
+                viewModel.rename(candidate, name)
+                renameCandidate = null
+            },
+            onDismiss = { renameCandidate = null },
         )
     }
 
@@ -222,14 +255,15 @@ private fun LibraryItemCard(
     item: LibraryItem,
     failureMessage: String?,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onRename: () -> Unit,
     onRetry: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true }),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -254,6 +288,29 @@ private fun LibraryItemCard(
                     DocumentStatus.IMPORTING -> ImportingRow()
                     DocumentStatus.FAILED -> FailedRow(failureMessage, onRetry, onDelete)
                     DocumentStatus.READY -> ReadyRow(item)
+                }
+            }
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onRename()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        },
+                    )
                 }
             }
         }
@@ -306,25 +363,76 @@ private fun ReadyRow(item: LibraryItem) {
 }
 
 @Composable
-private fun AddWebPageDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+private fun AddWebPageDialog(onConfirm: (url: String, name: String?) -> Unit, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add web page") },
         text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL") },
+                    placeholder = { Text("https://example.com/article") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name (optional)") },
+                    placeholder = { Text("Defaults to the page title") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(url, name.ifBlank { null }) },
+                enabled = url.isNotBlank(),
+            ) { Text("Import") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * Names or renames a book. When [requireName] is true the confirm button is
+ * disabled on blank input (rename must keep a title); otherwise a blank name is
+ * allowed and the caller falls back to the document's own title.
+ */
+@Composable
+private fun NameBookDialog(
+    title: String,
+    initialName: String,
+    confirmLabel: String,
+    requireName: Boolean = false,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
             OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
-                label = { Text("URL") },
-                placeholder = { Text("https://example.com/article") },
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Name") },
+                placeholder = if (!requireName) {
+                    { Text("Defaults to the document title") }
+                } else {
+                    null
+                },
                 singleLine = true,
             )
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(url) },
-                enabled = url.isNotBlank(),
-            ) { Text("Import") }
+                onClick = { onConfirm(name.trim()) },
+                enabled = !requireName || name.isNotBlank(),
+            ) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

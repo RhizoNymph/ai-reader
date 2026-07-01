@@ -23,9 +23,10 @@ cache LRU.
 
 ```
 library (start) ──tap ready item──► player/{docId}
-   │  ├─ FAB: Import PDF (SAF OpenDocument, persistable grant) / Add web page (URL dialog)
+   │  ├─ FAB: Import PDF (SAF OpenDocument, persistable grant → name dialog) / Add web page (URL + optional name)
    │  ├─ banner when no voice model installed ──► models
-   │  ├─ failed row: error + retry / delete; long-press: delete (confirm)
+   │  ├─ failed row: error + retry / delete
+   │  ├─ per-item overflow / long-press menu: Rename (dialog) / Delete (confirm)
    │  ├─ top bar ──► settings, models
 player ─── inline "model missing" prompt ──► models
 settings ◄──────────────────────────────────┘
@@ -72,17 +73,24 @@ TtsEngineFactory ────────────┘          │
 
 ## Import flow (create-then-fill)
 
-`ImportCoordinator.import(source)`:
-1. Insert placeholder row (`placeholderTitleFor(source)`, 0 sentences), flip to
-   `IMPORTING` — the library shows the row immediately.
+`ImportCoordinator.import(source, customTitle? = null)`:
+1. Insert placeholder row (0 sentences), flip to `IMPORTING` — the library shows
+   the row immediately. The placeholder title is the non-blank `customTitle` if
+   given, else `placeholderTitleFor(source)`.
 2. Extract (`PdfExtractor` / `WebPageExtractor`) → `TextPipeline.process` (on
    `Dispatchers.Default`).
-3. Success: insert the real document (status `READY`), then delete the
-   placeholder (this order avoids an empty-library flash). Failure: placeholder
-   flips to `FAILED`; `userMessageFor(ImportError)` is the single
-   error-to-string mapping, persisted to the row and mirrored in the in-memory
-   `failureMessages` map (core:data exposes no read-back of `errorMessage`).
+3. Success: insert the real document (status `READY`) — a non-blank `customTitle`
+   overrides the extraction-derived title — then delete the placeholder (this
+   order avoids an empty-library flash). Failure: placeholder flips to `FAILED`;
+   `userMessageFor(ImportError)` is the single error-to-string mapping, persisted
+   to the row and mirrored in the in-memory `failureMessages` map (core:data
+   exposes no read-back of `errorMessage`).
 Retry = delete failed row (+ chunk dir) and import the same source again.
+
+Naming and renaming: the PDF picker defers the import behind a name dialog (blank
+= use the PDF's own title); the web-page dialog has an optional name field.
+Renaming an existing document goes through `LibraryRepository.rename(docId,
+title)` (trims, ignores blank) via the per-item overflow/long-press menu.
 
 ## Player binding
 
@@ -118,8 +126,8 @@ Retry = delete failed row (+ chunk dir) and import the same source again.
 | `main/.../importing/ImportCoordinator.kt` | Create-then-fill import; `ImportResult`; `userMessageFor` (sole ImportError→string mapping); `failureMessages`. |
 | `main/.../ui/AppNavHost.kt` | `Routes` + `NavHost` wiring screens to factories. |
 | `main/.../ui/theme/Theme.kt` | Material3 dynamic dark/light theme. |
-| `main/.../ui/library/LibraryViewModel.kt` | Library list, model-installed banner flag, import/retry/delete actions in app scope. |
-| `main/.../ui/library/LibraryScreen.kt` | List with source icons, progress %, status chips, FAB menu (SAF picker, URL dialog), delete confirm, first-run banner. |
+| `main/.../ui/library/LibraryViewModel.kt` | Library list, model-installed banner flag, import (with optional title)/retry/delete/rename actions in app scope. |
+| `main/.../ui/library/LibraryScreen.kt` | List with source icons, progress %, status chips, FAB menu (SAF picker, URL dialog), per-item rename/delete menu, name dialogs, first-run banner. |
 | `main/.../ui/player/PlayerViewModel.kt` | Session load/re-attach, transport, speed/voice (persist + reload), debounced position persistence, `PlayerUiState`. |
 | `main/.../ui/player/PlayerScreen.kt` | Sentence list (highlight + auto-scroll, tap-to-seek), transport, synth status line, speed chips, voice picker, notification permission. |
 | `main/.../ui/models/ModelsViewModel.kt` | Catalog rows: repo `ModelState` × active jobs → `ModelRowStatus` (incl. `Paused`). |

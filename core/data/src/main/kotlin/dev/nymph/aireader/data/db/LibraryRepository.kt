@@ -74,6 +74,16 @@ class LibraryRepository(
         )
     }
 
+    /**
+     * Renames the document. Blank titles are ignored (a document always keeps a
+     * non-empty display title); the input is trimmed.
+     */
+    suspend fun rename(docId: Long, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        documentDao.updateTitle(docId, trimmed)
+    }
+
     /** Deletes the document; its sentences go with it via FK cascade. */
     suspend fun delete(docId: Long) {
         documentDao.deleteById(docId)
