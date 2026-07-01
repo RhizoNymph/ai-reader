@@ -40,7 +40,7 @@ class DefaultTextPipelineTest {
                     text = "Introduction.",
                     displayText = "Introduction",
                     blockIndex = 0,
-                    pauseAfterMs = 900,
+                    pauseAfterMs = 700,
                 ),
                 SpeakableSentence(
                     index = 1,
@@ -55,21 +55,21 @@ class DefaultTextPipelineTest {
                     displayText = "See https://www.example.com/report?id=1 for details — " +
                         "the findings were clear.",
                     blockIndex = 1,
-                    pauseAfterMs = 600,
+                    pauseAfterMs = 400,
                 ),
                 SpeakableSentence(
                     index = 3,
                     text = "Use the hotkey approach.",
                     displayText = "• Use the hotkey approach",
                     blockIndex = 3,
-                    pauseAfterMs = 400,
+                    pauseAfterMs = 300,
                 ),
                 SpeakableSentence(
                     index = 4,
                     text = "\"It was 50 percent better,\" she said.",
                     displayText = "“It was 50% better,” she said.",
                     blockIndex = 5,
-                    pauseAfterMs = 600,
+                    pauseAfterMs = 400,
                 ),
             ),
             result.sentences,
@@ -91,7 +91,7 @@ class DefaultTextPipelineTest {
             ExtractedDocument(null, listOf(ContentBlock.Paragraph("One. Two. Three."))),
         )
         assertEquals(listOf("One.", "Two.", "Three."), result.sentences.map { it.text })
-        assertEquals(listOf(0, 0, 600), result.sentences.map { it.pauseAfterMs })
+        assertEquals(listOf(0, 0, 400), result.sentences.map { it.pauseAfterMs })
     }
 
     @Test
@@ -106,7 +106,7 @@ class DefaultTextPipelineTest {
             listOf("First part one and two.", "Second part."),
             result.sentences.map { it.text },
         )
-        assertEquals(listOf(600, 600), result.sentences.map { it.pauseAfterMs })
+        assertEquals(listOf(400, 400), result.sentences.map { it.pauseAfterMs })
         assertEquals(listOf(0, 0), result.sentences.map { it.blockIndex })
     }
 
@@ -116,7 +116,7 @@ class DefaultTextPipelineTest {
             ExtractedDocument(null, listOf(ContentBlock.Heading("What Now?", level = 2))),
         )
         assertEquals(listOf("What Now?"), result.sentences.map { it.text })
-        assertEquals(listOf(900), result.sentences.map { it.pauseAfterMs })
+        assertEquals(listOf(700), result.sentences.map { it.pauseAfterMs })
     }
 
     @Test
@@ -175,7 +175,7 @@ class DefaultTextPipelineTest {
         // continuation punctuation, and only the final piece is terminal.
         assertTrue(result.sentences.first().text.endsWith(","))
         assertTrue(result.sentences.last().text.endsWith("."))
-        assertEquals(listOf(0, 600), result.sentences.map { it.pauseAfterMs })
+        assertEquals(listOf(0, 400), result.sentences.map { it.pauseAfterMs })
         // Both pieces highlight the same (whole) display sentence in the UI.
         assertEquals(result.sentences[0].displayText, result.sentences[1].displayText)
     }

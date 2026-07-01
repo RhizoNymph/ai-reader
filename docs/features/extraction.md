@@ -66,7 +66,9 @@ Two layers, split so all layout intelligence is JVM-testable:
       (page → column left-then-right → y); marginalia dropped.
    4. `FootnoteDetector.remove` per unit — trailing small-font runs.
    5. `ParagraphAssembler.assemble` — headings + paragraphs; paragraph lines
-      joined with `"\n"`; cross-page/column continuation merge.
+      joined with `"\n"`; cross-page/column continuation merge; non-repeating
+      running-head removal (heals a sentence split across a page break when a
+      short top-of-page title bleeds between the two halves).
 
 `pdf/PdfExtractor` wires the two; its constructor takes an
 `(String) -> Outcome<InputStream, ImportError>` opener lambda so the app layer
@@ -89,6 +91,7 @@ resolves SAF content URIs and the extractor stays testable.
 | Headings | fontSize ≥ 1.15 × body, < 90 chars, not ending in `.`; level 1 ≥ 1.6×, level 2 ≥ 1.35×, else 3 |
 | Paragraph split | vertical gap > 1.8 × modal line spacing (mode of body-line gaps, 0.5 pt buckets; fallback 1.2 × body font); or first-line indent (> column start + 1% page width) after terminal punctuation; or terminal punctuation + uppercase start + previous line < 70% column width |
 | Cross-unit merge | previous unit's last paragraph lacks terminal punctuation and next unit's first line starts lowercase |
+| Running-head heal | previous unit's paragraph is unfinished, the next unit's first line is a short (≤ 70 char) non-terminal line in the top 15% band, and the *following* non-heading line starts lowercase → the top line is dropped as a running head and the sentence merges across it |
 | Terminal punctuation | `. ! ? …`, with trailing closing quotes/brackets (`"'”’»)]`) ignored |
 
 ## Files

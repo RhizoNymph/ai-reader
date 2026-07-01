@@ -21,7 +21,10 @@ import dev.nymph.aireader.pipeline.stages.SymbolNormalizer
  *    punctuation and pause hints.
  *
  * Pause hints: the last sentence of each logical paragraph gets the block-type pause
- * (Heading 900 ms, Paragraph/Quote 600 ms, ListItem 400 ms); earlier sentences get 0.
+ * (Heading 700 ms, Paragraph/Quote 400 ms, ListItem 300 ms); earlier sentences get 0.
+ * These are deliberately short: sentences inside a paragraph run gaplessly (pause 0),
+ * and the boundary pauses are a natural beat, not the long stalls that make continuous
+ * listening feel choppy.
  */
 class DefaultTextPipeline : TextPipeline {
 
@@ -79,9 +82,9 @@ class DefaultTextPipeline : TextPipeline {
     }
 
     private companion object {
-        const val PAUSE_HEADING_MS = 900
-        const val PAUSE_PARAGRAPH_MS = 600
-        const val PAUSE_LIST_ITEM_MS = 400
-        const val PAUSE_QUOTE_MS = 600
+        const val PAUSE_HEADING_MS = 700
+        const val PAUSE_PARAGRAPH_MS = 400
+        const val PAUSE_LIST_ITEM_MS = 300
+        const val PAUSE_QUOTE_MS = 400
     }
 }

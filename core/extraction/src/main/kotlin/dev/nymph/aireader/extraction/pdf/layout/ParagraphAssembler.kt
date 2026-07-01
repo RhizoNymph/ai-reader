@@ -21,6 +21,14 @@ import kotlin.math.roundToInt
  * A paragraph continues across unit boundaries (page/column breaks) when the
  * previous unit's last line lacks terminal punctuation and the next unit's
  * first line starts lowercase.
+ *
+ * A non-repeating running head (e.g. a section title at the very top of a page)
+ * that lands between the two halves of a sentence split across a page break is
+ * dropped, and the sentence is healed across it: when the open paragraph is
+ * unfinished and the first line of the next unit is a short top-of-page line
+ * followed by a lowercase continuation, that first line is treated as furniture
+ * and skipped. This catches running heads that appear too few times for
+ * [RepeatedFurnitureDetector]'s repetition test to remove.
  */
 object ParagraphAssembler {
 
@@ -28,6 +36,11 @@ object ParagraphAssembler {
     private const val INDENT_PAGE_WIDTH_FRACTION = 0.01f
     private const val SHORT_LINE_COLUMN_FRACTION = 0.7f
     private const val FALLBACK_SPACING_RATIO = 1.2f
+
+    /** A running head sits at the very top of the page (top 15% band). */
+    private const val RUNNING_HEAD_TOP_BAND = 0.15f
+    /** Running heads are short titles, not sentences. */
+    private const val RUNNING_HEAD_MAX_CHARS = 70
 
     private const val TERMINAL = ".!?…"
     private const val CLOSERS = "\"'”’»)]"
@@ -47,26 +60,43 @@ object ParagraphAssembler {
         }
 
         for (unit in units) {
+            val lines = unit.lines
             var previousInUnit: PdfLine? = null
-            for (line in unit.lines) {
-                if (line.text.isBlank()) continue
+            var i = 0
+            while (i < lines.size) {
+                val line = lines[i]
+                if (line.text.isBlank()) {
+                    i++
+                    continue
+                }
 
                 val headingLevel = HeadingDetector.headingLevel(line, bodyFontSize)
                 if (headingLevel != null) {
                     flush()
                     blocks += ContentBlock.Heading(line.text.trim(), headingLevel)
                     previousInUnit = null
+                    i++
                     continue
                 }
 
                 val prev = previousInUnit
                 if (prev == null) {
-                    // First body line of this unit: maybe continue the open paragraph.
+                    // First body line of this unit. It may continue the open
+                    // paragraph, be a running head bleeding into a split
+                    // sentence (dropped), or start a fresh paragraph.
                     val open = lastParagraphLine
-                    val continues = open != null &&
-                        !endsSentence(open.text) &&
-                        startsLowercase(line.text)
-                    if (!continues) flush()
+                    val unfinished = open != null && !endsSentence(open.text)
+                    when {
+                        unfinished && startsLowercase(line.text) -> Unit // continues; append below
+                        unfinished && isRunningHead(line) &&
+                            nextBodyLineContinues(lines, i, bodyFontSize) -> {
+                            // Drop the running head; leave the paragraph open so
+                            // the following lowercase line heals the sentence.
+                            i++
+                            continue
+                        }
+                        else -> flush()
+                    }
                 } else if (startsNewParagraph(prev, line, unit, modalSpacing)) {
                     flush()
                 }
@@ -74,6 +104,7 @@ object ParagraphAssembler {
                 paragraphLines += line.text.trim()
                 lastParagraphLine = line
                 previousInUnit = line
+                i++
             }
         }
         flush()
@@ -92,6 +123,36 @@ object ParagraphAssembler {
         return prevEnded &&
             startsUppercase(line.text) &&
             prev.width < SHORT_LINE_COLUMN_FRACTION * unit.width
+    }
+
+    /**
+     * A short line at the very top of the page with no terminal punctuation —
+     * the shape of a running head. Only ever consulted when a sentence was left
+     * open by the previous unit and the following line continues it, so this
+     * stays lenient without eating real headings (which [HeadingDetector] has
+     * already claimed) or body text.
+     */
+    private fun isRunningHead(line: PdfLine): Boolean {
+        val text = line.text.trim()
+        if (text.isEmpty() || line.pageHeight <= 0f) return false
+        if (line.y / line.pageHeight > RUNNING_HEAD_TOP_BAND) return false
+        if (text.length > RUNNING_HEAD_MAX_CHARS) return false
+        return !endsSentence(text)
+    }
+
+    /**
+     * True when the next non-blank, non-heading line after [afterIndex] starts
+     * lowercase — i.e. it continues the sentence left open before the running
+     * head. A heading in between means this is a real section break, not a leak.
+     */
+    private fun nextBodyLineContinues(lines: List<PdfLine>, afterIndex: Int, bodyFontSize: Float): Boolean {
+        for (j in afterIndex + 1 until lines.size) {
+            val next = lines[j]
+            if (next.text.isBlank()) continue
+            if (HeadingDetector.headingLevel(next, bodyFontSize) != null) return false
+            return startsLowercase(next.text)
+        }
+        return false
     }
 
     /** True when the text ends with terminal punctuation (closing quotes/brackets ignored). */

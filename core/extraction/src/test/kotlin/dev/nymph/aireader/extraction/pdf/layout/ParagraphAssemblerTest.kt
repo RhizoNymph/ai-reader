@@ -112,6 +112,88 @@ class ParagraphAssemblerTest {
     }
 
     @Test
+    fun `non-repeating running head between a split sentence is dropped and the sentence healed`() {
+        // Page 0 ends mid-sentence; page 1 opens with a section running head
+        // ("Contents") at the very top, then continues the sentence lowercase.
+        val first = unitOf(
+            page(0) {
+                para("The reforms were controversial and it was hard to", startY = 130f)
+            },
+        )
+        val second = unitOf(
+            page(1) {
+                line("Contents", x = 72f, y = 40f, fontSize = 12f)
+                para(
+                    "convince most policymakers of the need for change,",
+                    "but the argument eventually prevailed.",
+                    startY = 96f,
+                )
+            },
+        )
+        assertEquals(
+            listOf(
+                ContentBlock.Paragraph(
+                    "The reforms were controversial and it was hard to\n" +
+                        "convince most policymakers of the need for change,\n" +
+                        "but the argument eventually prevailed.",
+                ),
+            ),
+            ParagraphAssembler.assemble(listOf(first, second), bodyFontSize = 12f),
+        )
+    }
+
+    @Test
+    fun `a real heading between units is not mistaken for a running head`() {
+        // Same shape, but the top-of-page line is a genuine larger-font heading
+        // and the next line starts a fresh (uppercase) sentence: no healing.
+        val first = unitOf(
+            page(0) {
+                para("The previous section closes without terminal", startY = 130f)
+            },
+        )
+        val second = unitOf(
+            page(1) {
+                line("The New Section", x = 72f, y = 40f, fontSize = 17f)
+                para("A fresh sentence opens the next section here.", startY = 96f)
+            },
+        )
+        assertEquals(
+            listOf(
+                ContentBlock.Paragraph("The previous section closes without terminal"),
+                ContentBlock.Heading("The New Section", 2),
+                ContentBlock.Paragraph("A fresh sentence opens the next section here."),
+            ),
+            ParagraphAssembler.assemble(listOf(first, second), bodyFontSize = 12f),
+        )
+    }
+
+    @Test
+    fun `top-of-page line is kept when it does not sit between a split sentence`() {
+        // Previous unit ended with a full stop: the short top line is a real
+        // new paragraph, not a leak, and must survive.
+        val first = unitOf(
+            page(0) {
+                para("A complete sentence ends the previous page.", startY = 130f)
+            },
+        )
+        val second = unitOf(
+            page(1) {
+                line("A short opener", x = 72f, y = 40f, fontSize = 12f)
+                para("that continues on the following line as its own thought.", startY = 96f)
+            },
+        )
+        assertEquals(
+            listOf(
+                ContentBlock.Paragraph("A complete sentence ends the previous page."),
+                ContentBlock.Paragraph(
+                    "A short opener\nthat continues on the following line as its own thought.",
+                ),
+            ),
+            ParagraphAssembler.assemble(listOf(first, second), bodyFontSize = 12f),
+        )
+    }
+
+    @Test
     fun `heading line flushes the open paragraph and emits a Heading`() {
         val unit = unitOf(
             page(0) {

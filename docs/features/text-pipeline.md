@@ -89,9 +89,11 @@ Per `ContentBlock`, in order:
 4. **Assembly** (`DefaultTextPipeline`): `SpeakableSentence(index, text, displayText,
    blockIndex, pauseAfterMs)`. `displayText` is the post-unwrap, pre-normalization
    sentence (original punctuation, casing, citations, URLs intact). Pauses: the last
-   sentence of each logical paragraph gets the block pause — Heading 900, Paragraph
-   600, ListItem 400, Quote 600 — all earlier sentences get 0. Indices are contiguous
-   from 0 (`SpeakableDocument.init` enforces this).
+   sentence of each logical paragraph gets the block pause — Heading 700, Paragraph
+   400, ListItem 300, Quote 400 — all earlier sentences get 0. These are deliberately
+   short so continuous listening does not feel choppy: sentences inside a paragraph run
+   gaplessly (pause 0) and only paragraph/heading boundaries carry a brief beat. Indices
+   are contiguous from 0 (`SpeakableDocument.init` enforces this).
 
 ## Files
 
