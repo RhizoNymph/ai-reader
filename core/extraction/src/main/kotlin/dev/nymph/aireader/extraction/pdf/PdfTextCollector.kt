@@ -18,17 +18,8 @@ import java.io.Writer
  */
 class PdfTextCollector : PDFTextStripper() {
 
-    private data class Fragment(
-        val text: String,
-        val x: Float,
-        val xEnd: Float,
-        val y: Float,
-        val height: Float,
-        val fontSizePt: Float,
-    )
-
     private val pages = mutableListOf<List<PdfLine>>()
-    private val fragments = mutableListOf<Fragment>()
+    private val fragments = mutableListOf<TextFragment>()
     private var pageWidth = 0f
     private var pageHeight = 0f
 
@@ -60,55 +51,26 @@ class PdfTextCollector : PDFTextStripper() {
 
     override fun writeString(text: String, textPositions: List<TextPosition>) {
         if (text.isBlank() || textPositions.isEmpty()) return
-        fragments += Fragment(
+        // Per-glyph x-starts (left to right); LineGrouper uses them to cut a run
+        // a PDF engine glued across a column boundary. They can be fewer than the
+        // characters when the engine synthesized spaces, so LineGrouper only
+        // trusts the leading (space-free) prefix.
+        val glyphXStarts = FloatArray(textPositions.size) { textPositions[it].xDirAdj }
+        fragments += TextFragment(
             text = text,
             x = textPositions.minOf { it.xDirAdj },
             xEnd = textPositions.maxOf { it.xDirAdj + it.widthDirAdj },
             y = textPositions.first().yDirAdj,
             height = textPositions.maxOf { it.heightDir },
             fontSizePt = textPositions.maxOf { it.fontSizeInPt },
+            glyphXStarts = glyphXStarts,
         )
     }
 
     override fun endPage(page: PDPage) {
-        pages += groupIntoLines(fragments.toList(), currentPageNo - 1, pageWidth, pageHeight)
+        pages += LineGrouper.group(fragments.toList(), currentPageNo - 1, pageWidth, pageHeight)
         fragments.clear()
         super.endPage(page)
-    }
-
-    /** Groups word fragments into visual lines by vertical proximity. */
-    private fun groupIntoLines(
-        fragments: List<Fragment>,
-        pageIndex: Int,
-        pageWidth: Float,
-        pageHeight: Float,
-    ): List<PdfLine> {
-        val sorted = fragments.sortedWith(compareBy({ it.y }, { it.x }))
-        val lines = mutableListOf<MutableList<Fragment>>()
-        for (fragment in sorted) {
-            val current = lines.lastOrNull()
-            val tolerance = maxOf(2f, 0.3f * fragment.fontSizePt)
-            if (current != null && kotlin.math.abs(fragment.y - current.first().y) <= tolerance) {
-                current += fragment
-            } else {
-                lines += mutableListOf(fragment)
-            }
-        }
-        return lines.map { parts ->
-            val ordered = parts.sortedBy { it.x }
-            val x = ordered.minOf { it.x }
-            PdfLine(
-                text = ordered.joinToString(" ") { it.text }.trim(),
-                x = x,
-                y = ordered.first().y,
-                width = ordered.maxOf { it.xEnd } - x,
-                height = ordered.maxOf { it.height },
-                fontSizePt = ordered.maxOf { it.fontSizePt },
-                pageIndex = pageIndex,
-                pageWidth = pageWidth,
-                pageHeight = pageHeight,
-            )
-        }.filter { it.text.isNotBlank() }
     }
 
     private object NullWriter : Writer() {

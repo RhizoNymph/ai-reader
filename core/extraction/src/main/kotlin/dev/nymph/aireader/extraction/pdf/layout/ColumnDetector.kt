@@ -42,6 +42,16 @@ object ColumnDetector {
     private const val MIN_COLUMN_WIDTH_RATIO = 0.4f
     private const val MARGINALIA_WIDTH_FRACTION = 0.4f
 
+    /**
+     * A stray line is only absorbed into a column when at least this fraction of
+     * its own width falls inside the column. Without this, a narrow side rail
+     * (e.g. a table-of-contents sidebar) whose widest lines just graze the body
+     * column by a fraction of a point would be pulled into the body and read as
+     * interleaved noise; instead it falls through to the marginalia test and is
+     * dropped.
+     */
+    private const val MIN_ABSORB_OVERLAP_FRACTION = 0.5f
+
     fun detect(lines: List<PdfLine>): List<ColumnUnit> {
         val usable = lines.filter { it.text.isNotBlank() }
         if (usable.isEmpty()) return emptyList()
@@ -65,11 +75,11 @@ object ColumnDetector {
                 minOf(col.xEnd, line.x + line.width) - maxOf(col.xStart, line.x)
             }
             val best = overlaps.indices.maxBy { overlaps[it] }
-            if (overlaps[best] > 0f) {
+            if (overlaps[best] >= MIN_ABSORB_OVERLAP_FRACTION * line.width.coerceAtLeast(1f)) {
                 columns[best].lines += line
                 continue
             }
-            // No overlap with any column: marginalia if narrow, else assign to nearest.
+            // Not meaningfully inside any column: marginalia if narrow, else assign to nearest.
             val nearest = columns.indices.minBy { i ->
                 val center = (columns[i].xStart + columns[i].xEnd) / 2f
                 kotlin.math.abs(center - (line.x + line.width / 2f))
@@ -114,13 +124,16 @@ object ColumnDetector {
         totalLines: Int,
         pageWidth: Float,
     ): List<List<PdfLine>> {
-        val biggest = clusters.maxBy { it.size }
+        // The main column is the one carrying the most text, not the most lines:
+        // a fragmented side rail (many short entries) can out-count the body in
+        // line quantity while holding a fraction of its actual text.
+        val main = clusters.maxBy { textMass(it) }
         val candidates = clusters
             .filter { it.size >= MIN_COLUMN_LINE_FRACTION * totalLines }
             .sortedByDescending { it.size }
             .take(2)
             .sortedBy { cluster -> cluster.minOf { it.x } }
-        if (candidates.size < 2) return listOf(biggest)
+        if (candidates.size < 2) return listOf(main)
 
         val (left, right) = candidates
         val leftStart = left.minOf { it.x }
@@ -134,6 +147,9 @@ object ColumnDetector {
             leftEnd <= rightStart + GUTTER_OVERLAP_TOLERANCE_FRACTION * pageWidth
         val widthOk = minOf(leftWidth, rightWidth) >= MIN_COLUMN_WIDTH_RATIO * maxOf(leftWidth, rightWidth)
 
-        return if (gutterOk && widthOk) listOf(left, right) else listOf(biggest)
+        return if (gutterOk && widthOk) listOf(left, right) else listOf(main)
     }
+
+    /** Total visible characters in a cluster; a proxy for how much text it carries. */
+    private fun textMass(cluster: List<PdfLine>): Int = cluster.sumOf { it.text.trim().length }
 }

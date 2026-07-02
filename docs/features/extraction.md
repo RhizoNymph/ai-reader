@@ -51,26 +51,37 @@ Two layers, split so all layout intelligence is JVM-testable:
 
 1. **`pdf/PdfTextCollector`** (Android-touching, thin): subclasses PdfBox
    `PDFTextStripper` with `sortByPosition`, overrides
-   `writeString(String, List<TextPosition>)`, and groups word fragments into
-   visual lines by y-proximity (tolerance `max(2pt, 0.3 × fontSize)`). Emits
-   `pdf/PdfLine(text, x, y, width, height, fontSizePt, pageIndex, pageWidth,
-   pageHeight)` per page using `getXDirAdj`/`getYDirAdj`/`getWidthDirAdj`
-   (top-left origin, y grows downward). The app must call
-   `PDFBoxResourceLoader.init(context)` once before use.
-2. **`pdf/layout/LayoutAnalyzer.analyze(pages: List<List<PdfLine>>):
+   `writeString(String, List<TextPosition>)` to emit `pdf/TextFragment`
+   (text + edges + per-glyph x-starts, from
+   `getXDirAdj`/`getWidthDirAdj`/`getYDirAdj`), then hands each page to the pure
+   `pdf/LineGrouper`. The app must call `PDFBoxResourceLoader.init(context)` once
+   before use.
+2. **`pdf/LineGrouper`** (pure Kotlin, JVM-tested): assembles fragments into
+   `pdf/PdfLine`s. Groups fragments into rows by y-proximity (tolerance
+   `max(2pt, 0.3 × fontSize)`), then **splits each row at column boundaries** so
+   a side rail (e.g. a table-of-contents rail) sharing a baseline with body text
+   is never glued into one line: a row splits at a wide horizontal gutter, where
+   consecutive fragments straddle the body column's left edge, and — using the
+   per-glyph x-starts — inside a single atomic run a PDF engine emitted spanning
+   the rail-to-body boundary with no gap. Emits `PdfLine(text, x, y, width,
+   height, fontSizePt, pageIndex, pageWidth, pageHeight)` (top-left origin, y
+   grows downward).
+3. **`pdf/layout/LayoutAnalyzer.analyze(pages: List<List<PdfLine>>):
    List<ContentBlock>`** (pure Kotlin), pipeline:
    1. `RepeatedFurnitureDetector.removeFurniture` — headers/footers/folios.
    2. Body font size = modal font size of remaining text, weighted by
       character count, bucketed to 0.5 pt.
    3. `ColumnDetector.detect` per page → `ColumnUnit`s in reading order
-      (page → column left-then-right → y); marginalia dropped.
+      (page → column left-then-right → y); the main column is the one with the
+      most text (not the most lines, so a fragmented side rail cannot win), and
+      narrow side-rail lines are dropped as marginalia.
    4. `FootnoteDetector.remove` per unit — trailing small-font runs.
    5. `ParagraphAssembler.assemble` — headings + paragraphs; paragraph lines
       joined with `"\n"`; cross-page/column continuation merge; non-repeating
       running-head removal (heals a sentence split across a page break when a
       short top-of-page title bleeds between the two halves).
 
-`pdf/PdfExtractor` wires the two; its constructor takes an
+`pdf/PdfExtractor` wires these; its constructor takes an
 `(String) -> Outcome<InputStream, ImportError>` opener lambda so the app layer
 resolves SAF content URIs and the extractor stays testable.
 `PDDocument.load`: `InvalidPasswordException` → `ImportError.Encrypted`,
@@ -84,6 +95,7 @@ resolves SAF content URIs and the extractor stays testable.
 | Furniture y-bands | top 15% / bottom 15% of page height (repetition-based removal only) |
 | Furniture repetition | normalized text (digits→`#`, collapsed spaces, lowercase) at similar y (cluster window 2% page height) on ≥ 60% of pages, min 3; **also** ≥ 60% (min 3) of even or odd pages, so verso/recto alternating headers are caught |
 | Page-number lines | pure digits, strict roman numerals, `Page N`, `Page N of M`, `N of M`, optionally wrapped in dashes/dots; dropped anywhere, regardless of repetition |
+| Line-grouping column split | within a same-baseline row, split at a horizontal gap > 1.5 × the smaller font size, where fragments straddle the body column's left edge (dominant x-start bucket by text mass), or inside one atomic run at the first glyph reaching that edge when the run starts ≥ 30pt out in the rail |
 | Column x-clustering | greedy 1-D clustering of line x-starts, tolerance 3% page width (absorbs first-line indents) |
 | Two columns | two clusters each ≥ 25% of page lines, x-starts ≥ 25% page width apart, left column's text not reaching into the right (2% tolerance), narrower column ≥ 40% the width of the wider (anti-sidebar guard) |
 | Marginalia | x-range overlaps no main column **and** width < 40% of nearest column width → dropped; wide outside lines are assigned to the nearest column instead |
@@ -102,7 +114,8 @@ resolves SAF content URIs and the extractor stays testable.
 | `…/extraction/web/WebPageExtractor.kt` | `Extractor<DocumentSource.WebPage>`: okhttp + Readability4J + HtmlToBlocks |
 | `…/extraction/web/HtmlToBlocks.kt` | Pure `convert(html: String): List<ContentBlock>` |
 | `…/extraction/pdf/PdfLine.kt` | Positioned-line boundary type between collector and layout analysis |
-| `…/extraction/pdf/PdfTextCollector.kt` | PdfBox `PDFTextStripper` subclass → `List<List<PdfLine>>` |
+| `…/extraction/pdf/LineGrouper.kt` | Pure `TextFragment` → `List<PdfLine>`: y-row grouping + column-boundary splitting (gutter / body-edge / atomic-run glyph split) |
+| `…/extraction/pdf/PdfTextCollector.kt` | PdfBox `PDFTextStripper` subclass → `TextFragment`s → `LineGrouper` → `List<List<PdfLine>>` |
 | `…/extraction/pdf/PdfExtractor.kt` | `Extractor<DocumentSource.Pdf>`: opener lambda + collector + analyzer |
 | `…/extraction/pdf/layout/LayoutAnalyzer.kt` | Orchestrates the layout pipeline; computes body font size |
 | `…/extraction/pdf/layout/RepeatedFurnitureDetector.kt` | Header/footer repetition + page-number patterns |
