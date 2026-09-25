@@ -1,0 +1,11 @@
+AI Reader
+Copyright 2026 RhizoNymph
+
+This product includes software developed by third parties:
+
+- sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx), Apache License 2.0.
+  Fetched at build time and bundled into the APK.
+
+Voice models (Kokoro, Piper) are not distributed with this project; the app
+downloads them at runtime from the sherpa-onnx releases, under their own
+licenses.

@@ -11,3 +11,20 @@ get wrong:
    footers, page numbers, and sidebars; web import uses Readability.
 
 See `docs/OVERVIEW.md` for architecture.
+
+## Building
+
+Requires JDK 17 and the Android SDK (set `sdk.dir` in `local.properties`).
+
+```sh
+./gradlew assembleDebug        # first build downloads the sherpa-onnx AAR (~56 MB)
+./gradlew testDebugUnitTest
+```
+
+The sherpa-onnx AAR is not committed; `core/tts` downloads the pinned release
+from GitHub and verifies its SHA-256 on first build. Voice models are
+downloaded by the app at runtime.
+
+## License
+
+Apache License 2.0. See `LICENSE` and `NOTICE`.
