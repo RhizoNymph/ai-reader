@@ -1,3 +1,6 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -38,7 +41,7 @@ val downloadSherpaOnnx by tasks.registering {
 
     doLast {
         fun sha256(file: File): String {
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = MessageDigest.getInstance("SHA-256")
             file.inputStream().use { input ->
                 val buffer = ByteArray(1 shl 16)
                 while (true) {
@@ -54,7 +57,7 @@ val downloadSherpaOnnx by tasks.registering {
 
         target.parentFile.mkdirs()
         val partial = File(target.parentFile, "${target.name}.part")
-        java.net.URI(url).toURL().openStream().use { input ->
+        URI(url).toURL().openStream().use { input ->
             partial.outputStream().use { output -> input.copyTo(output) }
         }
         val actual = sha256(partial)
