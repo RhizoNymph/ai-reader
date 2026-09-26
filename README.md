@@ -14,7 +14,9 @@ See `docs/OVERVIEW.md` for architecture.
 
 ## Building
 
-Requires JDK 17 and the Android SDK (set `sdk.dir` in `local.properties`).
+Requires the Android SDK (set `sdk.dir` in `local.properties`) and a JDK 21
+installation. The Gradle daemon is pinned to JDK 21 in
+`gradle/gradle-daemon-jvm.properties`, because Gradle 8.x cannot run on JDK 25.
 
 ```sh
 ./gradlew assembleDebug        # first build downloads the sherpa-onnx AAR (~56 MB)
