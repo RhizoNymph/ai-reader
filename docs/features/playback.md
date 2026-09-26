@@ -19,7 +19,11 @@ usually not even that.
 - `AiReaderPlaybackService`: Media3 `MediaSessionService` (foreground, default
   media notification), wired through the `PlaybackDependencies` locator.
 - `FullBookRenderWorker`: WorkManager job rendering every uncached chunk of a
-  document start-to-end with progress reporting.
+  document start-to-end with progress reporting (the walk itself is the shared
+  `renderMissingChunks`).
+- The audiobook export pipeline built on the same cache (WAV decode, PCM
+  resampling, M4A encode, `ExportAudiobookWorker`) is documented separately in
+  `docs/features/audiobook-export.md`.
 
 ## Non-scope
 
@@ -67,10 +71,10 @@ Media3 handles foreground state and the default notification. The app sets
 
 | file | role / key exports |
 |---|---|
-| `audio/WavCodec.kt` | Pure: `encode(FloatArray, sampleRate)` → 16-bit LE mono PCM WAV bytes (clamping, NaN→0); `appendSilence(samples, rate, ms)`; `silenceSampleCount`. |
+| `audio/WavCodec.kt` | Pure: `encode(FloatArray, sampleRate)` → 16-bit LE mono PCM WAV bytes (clamping, NaN→0); `appendSilence(samples, rate, ms)`; `silenceSampleCount`; `decode`/`decodeHeader` back to PCM with typed `WavError` (used by export). |
 | `cache/ChunkCache.kt` | `CacheError`; `voiceKey(engineId, voiceId, speed)` + `playbackVoiceKey(voice)` (pins speed 1.00); `ChunkStore` interface (`has`/`fileFor`/`write`/`totalBytes`); `ChunkCache(rootDir)`: `forDocument`, `deleteDoc`, `totalBytes(docId)`, `evictOthers(docId, keepVoiceKey)`. |
 | `synth/SynthWindow.kt` | Pure windowing policy: `nextTarget(playhead, size, lookahead, usedBytes, maxAheadBytes, isCached)`, `cachedThrough(playhead, size, isCached)`. |
-| `synth/ChunkSynthesis.kt` | `renderChunk(engine, sentence, voice, fallbackSampleRate, fallbackSilenceMs)` → `ChunkRender(wavBytes, sampleRate, error?)`; appends `pauseAfterMs`; silence fallback on failure. Shared by scheduler and worker. |
+| `synth/ChunkSynthesis.kt` | `renderChunk(engine, sentence, voice, fallbackSampleRate, fallbackSilenceMs)` → `ChunkRender(wavBytes, sampleRate, error?)`; appends `pauseAfterMs`; silence fallback on failure. `renderMissingChunks(...)`: the start-to-end walk shared by both workers. |
 | `synth/SynthesisScheduler.kt` | `SynthesisConfig` (lookahead 8, 256 MiB ahead budget, fallback 24 kHz / 300 ms, write-retry 1 s), `SynthState(playhead, cachedThrough, isSynthesizing, isComplete, lastError)`, `SynthesisScheduler(sentences, engine, voice, cache, scope, config)`: `start(initialIndex)`, `setPlayhead`, `state`/`playhead` StateFlows, `cancel`/`stop`. |
 | `service/PlaybackDependencies.kt` | Locator interface: `controller()`, `chunkCache()`, `engineFor(voice)`, `sentencesFor(docId)`. |
 | `service/PlaybackController.kt` | Thin ExoPlayer wrapper: `player`, `load`, `play`/`pause`, `seekToSentence`, `skipNext`/`skipPrevious`, `setSpeed`, `release`, `currentSentenceIndex`/`synthState` StateFlows. |

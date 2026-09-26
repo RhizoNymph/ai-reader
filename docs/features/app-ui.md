@@ -53,7 +53,9 @@ TtsEngineFactory ────────────┘          │
                           PlaybackDependencies (anonymous impl)
                                         │ assigned in AiReaderApp.onCreate
                                         ▼
-                AiReaderPlaybackService.dependencies (service + FullBookRenderWorker)
+                AiReaderPlaybackService.dependencies (service + FullBookRenderWorker
+                                                      + ExportAudiobookWorker)
+WorkManager (lazy) ─► PlayerViewModel export actions / exportState flow
 ```
 
 - The PDF opener lambda resolves `content://` URIs via `contentResolver`
@@ -119,7 +121,7 @@ title)` (trims, ignores blank) via the per-item overflow/long-press menu.
 |---|---|
 | `main/.../AiReaderApp.kt` | PDFBox init, builds `AppContainer`, assigns `AiReaderPlaybackService.dependencies`, starts settings collector. |
 | `main/.../MainActivity.kt` | Single activity; nav host; share-intent intake on `onCreate`/`onNewIntent`; persistable-grant attempt for shared PDFs. |
-| `main/.../di/AppContainer.kt` | All singletons, `PlaybackDependencies` impl, `ActivePlayback` holder, PDF stream opener, `startPlaybackService`. |
+| `main/.../di/AppContainer.kt` | All singletons (incl. `WorkManager`), `PlaybackDependencies` impl, `ActivePlayback` holder, PDF stream opener, `startPlaybackService`. |
 | `main/.../di/ModelInstallCoordinator.kt` | App-scoped download jobs: `install`/`cancel`, `activeInstalls`. |
 | `main/.../di/ViewModelFactories.kt` | Manual `ViewModelProvider.Factory` per screen (narrow constructor deps, no container injection). |
 | `main/.../importing/ShareIntents.kt` | Pure: `parseShareIntent`, `normalizeWebUrl`, `placeholderTitleFor` (JVM-tested). |
@@ -128,8 +130,8 @@ title)` (trims, ignores blank) via the per-item overflow/long-press menu.
 | `main/.../ui/theme/Theme.kt` | Material3 dynamic dark/light theme. |
 | `main/.../ui/library/LibraryViewModel.kt` | Library list, model-installed banner flag, import (with optional title)/retry/delete/rename actions in app scope. |
 | `main/.../ui/library/LibraryScreen.kt` | List with source icons, progress %, status chips, FAB menu (SAF picker, URL dialog), per-item rename/delete menu, name dialogs, first-run banner. |
-| `main/.../ui/player/PlayerViewModel.kt` | Session load/re-attach, transport, speed/voice (persist + reload), debounced position persistence, `PlayerUiState`. |
-| `main/.../ui/player/PlayerScreen.kt` | Sentence list (highlight + auto-scroll, tap-to-seek), transport, synth status line, speed chips, voice picker, notification permission. |
+| `main/.../ui/player/PlayerViewModel.kt` | Session load/re-attach, transport, speed/voice (persist + reload), debounced position persistence, `PlayerUiState`; audiobook export (`ExportUiState`, `startExport`/`cancelExport` over unique WorkManager work — see docs/features/audiobook-export.md). |
+| `main/.../ui/player/PlayerScreen.kt` | Sentence list (highlight + auto-scroll, tap-to-seek), transport, synth status line, export action/status (SAF create-document picker, progress + cancel), speed chips, voice picker, notification permission. |
 | `main/.../ui/models/ModelsViewModel.kt` | Catalog rows: repo `ModelState` × active jobs → `ModelRowStatus` (incl. `Paused`). |
 | `main/.../ui/models/ModelsScreen.kt` | Download/resume/cancel/uninstall, progress %, sizes, Wi-Fi hint. |
 | `main/.../ui/settings/SettingsViewModel.kt` | Settings flow + setters; installed-engine gating; lookahead clamp 4..32. |

@@ -1,14 +1,36 @@
 package dev.nymph.aireader.playback.audio
 
+import dev.nymph.aireader.model.Outcome
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
+/** Structured failure when reading a WAV chunk back from the cache. */
+sealed interface WavError {
+    val message: String
+
+    /** Not a canonical RIFF/WAVE container, or sizes are inconsistent. */
+    data class Malformed(override val message: String) : WavError
+
+    /** A valid WAV, but not the 16-bit mono PCM this codec produces. */
+    data class Unsupported(override val message: String) : WavError
+}
+
+/** The format half of a canonical chunk header. */
+class WavFormat(val sampleRate: Int, val dataBytes: Int)
+
+/** Decoded chunk audio: 16-bit mono PCM samples at [sampleRate]. */
+class PcmAudio(val sampleRate: Int, val samples: ShortArray)
+
 /**
- * Pure PCM-to-WAV encoding for synthesized sentence chunks.
+ * Pure PCM-to-WAV encoding for synthesized sentence chunks, and the matching
+ * decoder used when stitching cached chunks into a full-book export.
  *
  * Output is always 16-bit signed little-endian mono PCM in a canonical
  * 44-byte-header RIFF container, which Media3's WAV extractor plays directly.
+ * The decoder accepts exactly that canonical shape and nothing else — cache
+ * chunks are the only input it will ever see, so anything off-spec is a
+ * corrupt file, not a format to accommodate.
  * No Android dependencies; fully unit-tested on the JVM.
  */
 object WavCodec {
@@ -61,6 +83,66 @@ object WavCodec {
             buffer.putShort(toPcm16(sample))
         }
         return buffer.array()
+    }
+
+    /**
+     * Read the sample rate and data size from a canonical chunk header.
+     * Needs only the first [HEADER_BYTES] bytes of the file, so a rate scan
+     * over a whole document never reads full chunk payloads.
+     */
+    fun decodeHeader(bytes: ByteArray): Outcome<WavFormat, WavError> {
+        if (bytes.size < HEADER_BYTES) {
+            return Outcome.Err(WavError.Malformed("header truncated: ${bytes.size} bytes"))
+        }
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        if (!hasTag(bytes, 0, RIFF)) return malformed("missing RIFF tag")
+        if (!hasTag(bytes, 8, WAVE)) return malformed("missing WAVE tag")
+        if (!hasTag(bytes, 12, FMT)) return malformed("missing fmt tag")
+        if (!hasTag(bytes, 36, DATA)) return malformed("missing data tag")
+        val fmtSize = b.getInt(16)
+        if (fmtSize != 16) return unsupported("non-canonical fmt chunk size: $fmtSize")
+        val formatCode = b.getShort(20).toInt()
+        if (formatCode != 1) return unsupported("non-PCM format code: $formatCode")
+        val channels = b.getShort(22).toInt()
+        if (channels != 1) return unsupported("expected mono, got $channels channels")
+        val bitsPerSample = b.getShort(34).toInt()
+        if (bitsPerSample != 16) return unsupported("expected 16-bit samples, got $bitsPerSample")
+        val sampleRate = b.getInt(24)
+        if (sampleRate <= 0) return malformed("non-positive sample rate: $sampleRate")
+        val dataBytes = b.getInt(40)
+        if (dataBytes < 0 || dataBytes % BYTES_PER_SAMPLE != 0) {
+            return malformed("bad data size: $dataBytes")
+        }
+        return Outcome.Ok(WavFormat(sampleRate, dataBytes))
+    }
+
+    /** Decode a complete canonical chunk file back into PCM samples. */
+    fun decode(bytes: ByteArray): Outcome<PcmAudio, WavError> {
+        val format = when (val header = decodeHeader(bytes)) {
+            is Outcome.Err -> return Outcome.Err(header.error)
+            is Outcome.Ok -> header.value
+        }
+        if (bytes.size - HEADER_BYTES != format.dataBytes) {
+            return malformed(
+                "data size ${format.dataBytes} disagrees with payload ${bytes.size - HEADER_BYTES}",
+            )
+        }
+        val buf = ByteBuffer.wrap(bytes, HEADER_BYTES, format.dataBytes).order(ByteOrder.LITTLE_ENDIAN)
+        val samples = ShortArray(format.dataBytes / BYTES_PER_SAMPLE) { buf.short }
+        return Outcome.Ok(PcmAudio(format.sampleRate, samples))
+    }
+
+    private fun malformed(reason: String): Outcome.Err<WavError> =
+        Outcome.Err(WavError.Malformed(reason))
+
+    private fun unsupported(reason: String): Outcome.Err<WavError> =
+        Outcome.Err(WavError.Unsupported(reason))
+
+    private fun hasTag(bytes: ByteArray, offset: Int, tag: ByteArray): Boolean {
+        for (i in tag.indices) {
+            if (bytes[offset + i] != tag[i]) return false
+        }
+        return true
     }
 
     private fun toPcm16(sample: Float): Short {

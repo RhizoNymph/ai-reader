@@ -10,7 +10,7 @@ import dev.nymph.aireader.model.TtsEngineId
 import dev.nymph.aireader.model.VoiceSpec
 import dev.nymph.aireader.playback.cache.playbackVoiceKey
 import dev.nymph.aireader.playback.synth.SynthesisConfig
-import dev.nymph.aireader.playback.synth.renderChunk
+import dev.nymph.aireader.playback.synth.renderMissingChunks
 
 /**
  * Background "render the whole book" job: walks every sentence of a document
@@ -70,22 +70,13 @@ class FullBookRenderWorker(
             val sentences = deps.sentencesFor(docId)
             if (sentences.isEmpty()) return Result.success()
             val store = deps.chunkCache().forDocument(docId, playbackVoiceKey(voice))
-            val config = SynthesisConfig()
-            var lastKnownSampleRate = config.fallbackSampleRate
-            var completed = 0
-            for (sentence in sentences) {
-                if (!store.has(sentence.index)) {
-                    val render = renderChunk(engine, sentence, voice, lastKnownSampleRate, config.fallbackSilenceMs)
-                    lastKnownSampleRate = render.sampleRate
-                    when (val written = store.write(sentence.index, render.wavBytes)) {
-                        is Outcome.Err -> return failure(written.error.message)
-                        is Outcome.Ok -> Unit
-                    }
-                }
-                completed++
-                setProgress(workDataOf(PROGRESS_COMPLETED to completed, PROGRESS_TOTAL to sentences.size))
+            val rendered = renderMissingChunks(sentences, engine, voice, store, SynthesisConfig()) { completed, total ->
+                setProgress(workDataOf(PROGRESS_COMPLETED to completed, PROGRESS_TOTAL to total))
             }
-            return Result.success()
+            return when (rendered) {
+                is Outcome.Ok -> Result.success()
+                is Outcome.Err -> failure(rendered.error.message)
+            }
         } finally {
             engine.release()
         }

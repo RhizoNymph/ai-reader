@@ -24,6 +24,7 @@ android {
 dependencies {
     api(project(":core:model"))
     implementation(project(":core:tts"))
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.media3.exoplayer)

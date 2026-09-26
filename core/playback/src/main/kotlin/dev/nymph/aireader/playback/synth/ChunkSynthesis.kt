@@ -5,6 +5,8 @@ import dev.nymph.aireader.model.SpeakableSentence
 import dev.nymph.aireader.model.TtsError
 import dev.nymph.aireader.model.VoiceSpec
 import dev.nymph.aireader.playback.audio.WavCodec
+import dev.nymph.aireader.playback.cache.CacheError
+import dev.nymph.aireader.playback.cache.ChunkStore
 import dev.nymph.aireader.tts.TtsEngine
 
 /**
@@ -45,4 +47,37 @@ internal suspend fun renderChunk(
         val sampleCount = WavCodec.silenceSampleCount(fallbackSampleRate, fallbackSilenceMs + sentence.pauseAfterMs)
         ChunkRender(WavCodec.encode(FloatArray(sampleCount), fallbackSampleRate), fallbackSampleRate, result.error)
     }
+}
+
+/**
+ * Walk [sentences] start-to-end and render every chunk not already in [store]:
+ * the whole-book pass shared by the full-book render worker and the export
+ * worker. [onProgress] fires after every sentence (cached ones included, so
+ * `completed` counts monotonically to `total`) and is a suspension point,
+ * making cancellation prompt. Per-sentence synthesis failures become silence
+ * chunks ([renderChunk]); only a cache write failure aborts the walk.
+ */
+internal suspend fun renderMissingChunks(
+    sentences: List<SpeakableSentence>,
+    engine: TtsEngine,
+    voice: VoiceSpec,
+    store: ChunkStore,
+    config: SynthesisConfig,
+    onProgress: suspend (completed: Int, total: Int) -> Unit,
+): Outcome<Unit, CacheError> {
+    var lastKnownSampleRate = config.fallbackSampleRate
+    var completed = 0
+    for (sentence in sentences) {
+        if (!store.has(sentence.index)) {
+            val render = renderChunk(engine, sentence, voice, lastKnownSampleRate, config.fallbackSilenceMs)
+            lastKnownSampleRate = render.sampleRate
+            when (val written = store.write(sentence.index, render.wavBytes)) {
+                is Outcome.Err -> return written
+                is Outcome.Ok -> Unit
+            }
+        }
+        completed++
+        onProgress(completed, sentences.size)
+    }
+    return Outcome.Ok(Unit)
 }

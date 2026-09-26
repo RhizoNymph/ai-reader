@@ -39,6 +39,7 @@ fun playerViewModelFactory(container: AppContainer, docId: Long): ViewModelProvi
             activePlayback = container.activePlayback,
             startPlaybackService = container::startPlaybackService,
             appScope = container.appScope,
+            workManager = container.workManager,
         )
     }
 

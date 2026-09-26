@@ -1,6 +1,7 @@
 package dev.nymph.aireader.ui.player
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,6 +23,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -80,6 +83,11 @@ fun PlayerScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    (uiState as? PlayerUiState.Ready)?.let { ready ->
+                        ExportAction(viewModel, ready.title)
                     }
                 },
             )
@@ -141,6 +149,10 @@ private fun PlayerContent(viewModel: PlayerViewModel, state: PlayerUiState.Ready
             modifier = Modifier.weight(1f),
         )
         SynthStatusLine(synth, currentIndex)
+        ExportStatusLine(
+            state = viewModel.exportState.collectAsState().value,
+            onCancel = viewModel::cancelExport,
+        )
         TransportControls(
             isPlaying = isPlaying,
             onPlay = viewModel::play,
@@ -207,6 +219,104 @@ private fun SentenceList(
                     .clickable { onSentenceTap(index) }
                     .padding(8.dp),
             )
+        }
+    }
+}
+
+/**
+ * The top-bar "download audiobook" button: opens a SAF create-document picker,
+ * then hands the chosen destination to the export worker. Disabled while an
+ * export for this document is queued or running.
+ */
+@Composable
+private fun ExportAction(viewModel: PlayerViewModel, title: String) {
+    val exportState by viewModel.exportState.collectAsState()
+    val context = LocalContext.current
+    val createDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("audio/mp4"),
+    ) { uri ->
+        if (uri != null) {
+            // The export outlives this activity; keep the write grant durable.
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+                // Provider offered no persistable grant; the transient one
+                // covers this process's lifetime, which is the common case.
+            }
+            viewModel.startExport(uri)
+        }
+    }
+    val busy = exportState is ExportUiState.Queued || exportState is ExportUiState.InProgress
+    IconButton(
+        onClick = { createDocument.launch(exportFileName(title)) },
+        enabled = !busy,
+    ) {
+        Icon(Icons.Filled.Download, contentDescription = "Download audiobook")
+    }
+}
+
+/** The suggested file name: the document title, made filesystem-safe. */
+private fun exportFileName(title: String): String {
+    val safe = title.map { if (it.isLetterOrDigit() || it in " ._-()") it else '_' }
+        .joinToString("")
+        .trim()
+        .ifBlank { "audiobook" }
+    return "$safe.m4a"
+}
+
+@Composable
+private fun ExportStatusLine(state: ExportUiState, onCancel: () -> Unit) {
+    if (state is ExportUiState.Idle) return
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 2.dp)) {
+        when (state) {
+            is ExportUiState.Idle -> Unit
+            is ExportUiState.Queued -> ExportProgressRow("Export queued…", progress = null, onCancel)
+            is ExportUiState.InProgress -> {
+                val label = when (state.phase) {
+                    ExportPhase.SYNTHESIZING -> "Rendering audio · ${state.completed} / ${state.total}"
+                    ExportPhase.ENCODING -> "Encoding audiobook · ${state.completed} / ${state.total}"
+                    ExportPhase.SAVING -> "Saving…"
+                }
+                val fraction = if (state.total > 0) state.completed.toFloat() / state.total else null
+                ExportProgressRow(label, fraction, onCancel)
+            }
+            is ExportUiState.Saved -> Text(
+                "Audiobook saved",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            is ExportUiState.Failed -> Text(
+                "Export failed: ${state.message}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportProgressRow(label: String, progress: Float?, onCancel: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (progress != null) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
+            }
+        }
+        IconButton(onClick = onCancel) {
+            Icon(Icons.Filled.Close, contentDescription = "Cancel export")
         }
     }
 }

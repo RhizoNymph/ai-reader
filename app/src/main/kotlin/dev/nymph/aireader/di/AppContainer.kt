@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.work.WorkManager
 import dev.nymph.aireader.data.db.AiReaderDatabase
 import dev.nymph.aireader.data.db.LibraryRepository
 import dev.nymph.aireader.data.settings.SettingsDefaults
@@ -109,6 +110,9 @@ class AppContainer(private val appContext: Context) {
     val importCoordinator: ImportCoordinator by lazy {
         ImportCoordinator(webPageExtractor, pdfExtractor, textPipeline, libraryRepository)
     }
+
+    /** Runs the full-book render and audiobook export jobs. */
+    val workManager: WorkManager by lazy { WorkManager.getInstance(appContext) }
 
     /**
      * Synthesis lookahead applied when the controller is first constructed

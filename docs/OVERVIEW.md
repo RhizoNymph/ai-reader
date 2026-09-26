@@ -15,7 +15,7 @@ Overview:
     core:extraction: Source → ExtractedDocument. Web via Readability4J; PDF via PdfBox-Android positioned text + pure-Kotlin layout analysis.
     core:pipeline: ExtractedDocument → SpeakableDocument. Dehyphenation, line unwrapping, symbol normalization, speakable expansion, sentence segmentation, pause hints.
     core:tts: TtsEngine contract + sherpa-onnx implementations (Kokoro, Piper) + voice model download manager.
-    core:playback: Foreground media service; synthesizes sentences ahead of the playhead into a per-document audio chunk cache; Media3 playback; WorkManager full-book render.
+    core:playback: Foreground media service; synthesizes sentences ahead of the playhead into a per-document audio chunk cache; Media3 playback; WorkManager full-book render and M4A audiobook export.
     core:data: Room (documents, sentences, positions, voice prefs) + DataStore settings.
     app: Compose UI (library, import, player, settings) + manual DI wiring.
   data_flow: >
@@ -47,6 +47,11 @@ Features Index:
     entry_points: [core/playback]
     depends_on: [tts-engine, text-pipeline]
     doc: docs/features/playback.md
+  audiobook-export:
+    description: Render the whole document and download it as one M4A file; SAF destination, foreground WorkManager job, progress + cancel in the player.
+    entry_points: [core/playback ExportAudiobookWorker, app PlayerViewModel.startExport]
+    depends_on: [playback, tts-engine]
+    doc: docs/features/audiobook-export.md
   library:
     description: Document library persistence and app settings.
     entry_points: [core/data]

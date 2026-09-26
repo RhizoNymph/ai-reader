@@ -1,8 +1,13 @@
 package dev.nymph.aireader.ui.player
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import dev.nymph.aireader.data.db.DocumentStatus
 import dev.nymph.aireader.data.db.LibraryRepository
 import dev.nymph.aireader.data.settings.AppSettings
@@ -13,6 +18,7 @@ import dev.nymph.aireader.model.SpeakableSentence
 import dev.nymph.aireader.model.TtsEngineId
 import dev.nymph.aireader.model.TtsError
 import dev.nymph.aireader.model.VoiceSpec
+import dev.nymph.aireader.playback.service.ExportAudiobookWorker
 import dev.nymph.aireader.playback.service.PlaybackController
 import dev.nymph.aireader.playback.synth.SynthState
 import dev.nymph.aireader.tts.models.ModelStore
@@ -21,10 +27,13 @@ import dev.nymph.aireader.tts.models.VoiceModelDescriptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,6 +45,22 @@ data class VoiceChoice(
     val voiceId: String,
     val displayName: String,
 )
+
+/** Where the export phase sits in the pipeline; drives the progress label. */
+enum class ExportPhase { SYNTHESIZING, ENCODING, SAVING }
+
+/** What the export row shows. Terminal states only surface for exports started in this screen session. */
+sealed interface ExportUiState {
+    data object Idle : ExportUiState
+
+    data object Queued : ExportUiState
+
+    data class InProgress(val phase: ExportPhase, val completed: Int, val total: Int) : ExportUiState
+
+    data object Saved : ExportUiState
+
+    data class Failed(val message: String) : ExportUiState
+}
 
 sealed interface PlayerUiState {
     data object Loading : PlayerUiState
@@ -64,6 +89,7 @@ class PlayerViewModel(
     private val activePlayback: MutableStateFlow<ActivePlayback?>,
     private val startPlaybackService: () -> Unit,
     private val appScope: CoroutineScope,
+    private val workManager: WorkManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Loading)
@@ -79,6 +105,21 @@ class PlayerViewModel(
 
     val currentSentenceIndex: StateFlow<Int> = controller.currentSentenceIndex
     val synthState: StateFlow<SynthState> = controller.synthState
+
+    /**
+     * True once this screen session started an export. Running exports from a
+     * previous visit still surface (the WorkManager flow reports them); only
+     * *terminal* states are filtered by this flag, so a "Saved" or "Failed"
+     * from last week never greets the user on entry.
+     */
+    private val exportRequested = MutableStateFlow(false)
+
+    val exportState: StateFlow<ExportUiState> =
+        combine(
+            workManager.getWorkInfosForUniqueWorkFlow(ExportAudiobookWorker.uniqueWorkName(docId)),
+            exportRequested,
+        ) { infos, requested -> exportUiState(infos.firstOrNull(), requested) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, ExportUiState.Idle)
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -180,6 +221,56 @@ class PlayerViewModel(
         activePlayback.update { if (it?.docId == docId) it.copy(voice = updated) else it }
         // Persist per document; speed never invalidates cached audio.
         appScope.launch { library.updateVoice(docId, updated) }
+    }
+
+    /**
+     * Render the whole book and write it to [targetUri] (a SAF document the
+     * user just created). One export per document at a time; a re-tap while
+     * one runs is kept, not restarted. The worker pins speed to 1.0 and reuses
+     * every chunk already in the playback cache.
+     */
+    fun startExport(targetUri: Uri) {
+        val state = _uiState.value as? PlayerUiState.Ready ?: return
+        val voice = _voice.value ?: return
+        exportRequested.value = true
+        val request = OneTimeWorkRequestBuilder<ExportAudiobookWorker>()
+            .setInputData(ExportAudiobookWorker.inputData(docId, voice, targetUri.toString(), state.title))
+            .build()
+        workManager.enqueueUniqueWork(
+            ExportAudiobookWorker.uniqueWorkName(docId),
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    fun cancelExport() {
+        workManager.cancelUniqueWork(ExportAudiobookWorker.uniqueWorkName(docId))
+    }
+
+    private fun exportUiState(info: WorkInfo?, requested: Boolean): ExportUiState = when (info?.state) {
+        null -> ExportUiState.Idle
+        WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ExportUiState.Queued
+        WorkInfo.State.RUNNING -> {
+            val phase = when (info.progress.getString(ExportAudiobookWorker.PROGRESS_PHASE)) {
+                ExportAudiobookWorker.PHASE_ENCODING -> ExportPhase.ENCODING
+                ExportAudiobookWorker.PHASE_SAVING -> ExportPhase.SAVING
+                else -> ExportPhase.SYNTHESIZING
+            }
+            ExportUiState.InProgress(
+                phase = phase,
+                completed = info.progress.getInt(ExportAudiobookWorker.PROGRESS_COMPLETED, 0),
+                total = info.progress.getInt(ExportAudiobookWorker.PROGRESS_TOTAL, 0),
+            )
+        }
+        WorkInfo.State.SUCCEEDED -> if (requested) ExportUiState.Saved else ExportUiState.Idle
+        WorkInfo.State.FAILED -> if (requested) {
+            ExportUiState.Failed(
+                info.outputData.getString(ExportAudiobookWorker.KEY_ERROR) ?: "Export failed",
+            )
+        } else {
+            ExportUiState.Idle
+        }
+        WorkInfo.State.CANCELLED -> ExportUiState.Idle
     }
 
     /** Voices of all installed engines, from the catalog. */
