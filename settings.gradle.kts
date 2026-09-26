@@ -6,6 +6,11 @@ pluginManagement {
     }
 }
 
+// Lets Gradle download the JDK 17 toolchain the JVM modules need when it isn't installed.
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
