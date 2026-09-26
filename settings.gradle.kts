@@ -17,6 +17,18 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven("https://jitpack.io")
+        // sherpa-onnx is not on Maven Central; resolve its AAR straight from GitHub releases.
+        // The SHA-256 is pinned in gradle/verification-metadata.xml.
+        exclusiveContent {
+            forRepository {
+                ivy("https://github.com/k2-fsa/sherpa-onnx/releases/download/") {
+                    name = "sherpaOnnxGitHubReleases"
+                    patternLayout { artifact("v[revision]/[artifact]-[revision].[ext]") }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule("com.k2fsa", "sherpa-onnx") }
+        }
     }
 }
 

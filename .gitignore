@@ -17,9 +17,6 @@ output-metadata.json
 lint-results*.html
 lint-results*.xml
 
-# Downloaded at build time (see core/tts/build.gradle.kts)
-core/tts/libs/
-
 # Signing and secrets
 *.jks
 *.keystore

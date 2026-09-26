@@ -88,7 +88,7 @@ empty sample arrays → `TtsError.SynthesisFailed`.
 | `engine/SherpaConfigBuilder.kt` | pure `SherpaModelConfig.{Kokoro,Vits}` + `SherpaConfigBuilder.build(descriptor, modelDir, numThreads)` |
 | `engine/SherpaTtsEngine.kt` | `SherpaTtsEngine` (native `OfflineTts` wrapper) + private mapper to `OfflineTtsConfig` |
 | `engine/TtsEngineFactory.kt` | `TtsEngineFactory.create(descriptor): Outcome<TtsEngine, TtsError>` |
-| `build.gradle.kts` | `downloadSherpaOnnx` task: fetches the pinned sherpa-onnx release AAR into `libs/` (gitignored) and verifies its SHA-256; the AAR file dependency is `builtBy` this task |
+| `build.gradle.kts` | depends on `libs.sherpa.onnx` (`com.k2fsa:sherpa-onnx@aar`), resolved via the `exclusiveContent` ivy repository over GitHub releases in `settings.gradle.kts`; SHA-256 pinned in `gradle/verification-metadata.xml` |
 | tests | `models/{VoiceModelCatalogTest, ModelStoreTest, TarBz2ExtractorTest, ModelDownloaderTest, ModelRepositoryTest}`, `engine/{SherpaConfigBuilderTest, TtsEngineFactoryTest}`; `TarBz2ExtractorTest` also exports `writeTarBz2`/`TestArchiveEntry` helpers used by the downloader tests (MockWebServer) |
 
 ## Invariants and constraints
@@ -104,9 +104,10 @@ empty sample arrays → `TtsError.SynthesisFailed`.
   install dir itself.
 - Native `OfflineTts` is not thread-safe: all `generate` calls are serialized
   behind a `Mutex`; `release()` must not race an in-flight `synthesize`.
-- The sherpa-onnx AAR is never committed. Its version and SHA-256 are pinned in
-  `core/tts/build.gradle.kts`; a checksum mismatch fails the build. Bumping the
-  version requires updating both.
+- The sherpa-onnx AAR is never committed, and never a local `files()` dependency
+  (AGP refuses to bundle a library AAR with local `.aar` deps). The version lives in
+  `gradle/libs.versions.toml` and its SHA-256 in `gradle/verification-metadata.xml`;
+  a mismatch fails the build, so bumping the version means updating both.
 - `SherpaTtsEngine` is Android-only (loads `libsherpa-onnx-jni`); everything
   else in the module is pure JVM and covered by unit tests.
 - No exceptions cross the module boundary: all failures surface as

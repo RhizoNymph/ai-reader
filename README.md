@@ -25,8 +25,9 @@ automatically if it isn't installed.
 ./gradlew testDebugUnitTest
 ```
 
-The sherpa-onnx AAR is not committed; `core/tts` downloads the pinned release
-from GitHub and verifies its SHA-256 on first build. Voice models are
+The sherpa-onnx AAR is not committed. Gradle resolves it from the sherpa-onnx
+GitHub releases (see `settings.gradle.kts`) and checks it against the SHA-256
+pinned in `gradle/verification-metadata.xml`. Voice models are
 downloaded by the app at runtime.
 
 ## License

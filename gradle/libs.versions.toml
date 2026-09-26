@@ -19,8 +19,11 @@ pdfboxAndroid = "2.0.27.0"
 documentfile = "1.0.1"
 junit = "4.13.2"
 commonsCompress = "1.27.1"
+sherpaOnnx = "1.13.2"
 
 [libraries]
+# Served from GitHub releases; see the exclusiveContent repository in settings.gradle.kts.
+sherpa-onnx = { module = "com.k2fsa:sherpa-onnx", version.ref = "sherpaOnnx" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
